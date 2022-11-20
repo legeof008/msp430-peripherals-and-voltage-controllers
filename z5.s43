@@ -1,0 +1,83 @@
+#include "msp430.h"			; dolaczenie biblioteki do MSP430
+;------------------------------------------------------------------------------
+; Rotacja "1" na porcie P2, w lewo
+;------------------------------------------------------------------------------
+	ORG	01100h			; poczatkowy adres pamieci programu
+
+INIT:	mov.w	#0A00h,SP		; inicjalizacja wsk. stosu
+	mov.w	#WDTPW+WDTHOLD,&WDTCTL	; wylaczenie watchdoga
+;        bis.b   #GIE,SR 
+        bis.b   #00010000b,&P1DIR
+        bis.b   #10000000b,&P5DIR
+        bic.b   #00010000b,&P1OUT
+        bic.b   #10000000b,&P5OUT
+        bis.b	#0FFh,&P2DIR
+        bis.b   #0ffh, &P6SEL
+        
+        bis.w   #DAC12RES+DAC12CALON+DAC12AMP1+DAC12ENC+DAC12IR,&DAC12_1CTL
+        bic.w   #DAC12SREF1+DAC12SREF0+DAC12LSEL0+DAC12LSEL1+DAC12IR+DAC12AMP2+DAC12AMP0,&DAC12_1CTL
+        bis.w   #REFON+REF2_5V,&ADC12CTL0
+        
+        mov.w   #0h,&DAC12_1DAT
+        mov.b   #0h, &P2OUT
+        
+       
+;--------------------------------------;            
+
+       
+
+
+first:
+        mov.w   #0h,&DAC12_1DAT
+        mov.b   #0ffh, &P2OUT
+        
+inc_1:       
+        cmp.w   #03fh,&DAC12_1DAT
+        jeq     second
+        
+        inc.w   &DAC12_1DAT
+        sub.b   #4,&P2OUT
+        call    #delay
+        jmp     inc_1
+        
+second:
+        cmp.w   #07fh,&DAC12_1DAT
+        jeq     third
+        
+        inc.w   &DAC12_1DAT
+        add.b   #2,&P2OUT
+        call    #delay
+        jmp     second
+        
+third:
+        cmp.w   #0beh,&DAC12_1DAT
+        jeq     fourth
+        
+        inc.w   &DAC12_1DAT
+        sub.b   #2,&P2OUT
+        call    #delay
+        jmp     third
+        
+fourth:
+        cmp.w   #0ffh,&DAC12_1DAT
+        jeq     first
+        
+        inc.w   &DAC12_1DAT
+        add.b   #4,&P2OUT
+        call    #delay
+        jmp     fourth
+         
+delay:  mov.w	#0ffh, R15
+        
+       
+del:	dec.w	R15			
+	jnz	del
+        RET
+             
+
+;------------------------------------------------------------------------------
+;       Wektory przerwan
+;------------------------------------------------------------------------------
+	ORG	0FFFEh			; wektor resetu
+	DW	INIT			; adres poczatkowy pamieci programu 
+   	END

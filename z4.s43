@@ -1,0 +1,349 @@
+#include "msp430.h"                     ; #define controlled include file
+
+E       EQU BIT1
+RS      EQU BIT0
+DB4     EQU BIT2
+DB5     EQU BIT3
+DB6     EQU BIT4
+DB7     EQU BIT5
+DATA4   EQU 00111100b
+FuncSet EQU 00001000b
+DDRAMSet EQU 10000000b
+
+
+        NAME    main                    ; module name
+
+        PUBLIC  main                    ; make the main label vissible
+                                        ; outside this module
+
+        ORG     0FFFEh
+        DC16    init                    ; set reset vector to 'init' label
+
+        ORG     0FFE8h
+        DW      ENCO
+        
+        ORG     0FFEEh                  
+        DW      adc_h
+
+        RSEG    CSTACK                  ; pre-declaration of segment
+        RSEG    CODE                    ; place program in 'CODE' segment
+
+init:   MOV     #SFE(CSTACK), SP        ; set up stack
+
+main:   NOP                             ; main program
+        MOV.W   #WDTPW+WDTHOLD,&WDTCTL  ; Stop watchdog timer
+        bis.b   #0000010b,P1IE          ; wlacz przerwanie na p1.1 (enkoder)
+        BIS.B   #0FFh, P2DIR
+        BIS.B   #0FFh, P2OUT
+        
+        BIS.B   #00010000b,P4SEL
+        BIS.B   #00010000b,P4DIR
+        
+        ;bis.w   #1DAh, &TACTL
+        ;bis.w   #0ffffh,&TACCR0
+        ;bis.w   #CCIE, &TACCTL0
+        
+        bis.b   #0ffh, &P6SEL ; konfiguracja adc
+        bis.w   #MSC+ADC12ON+REFON+REF2_5V, &ADC12CTL0
+        bis.w   #SHP+CONSEQ_3, &ADC12CTL1
+        bis.b   #INCH_1+SREF0, &ADC12MCTL0
+        bis.w   #ENC+ADC12SC, &ADC12CTL0
+        bis.w   #1, &ADC12IE
+        
+        bis.w   #TBSSEL1+ID0+ID1+MC0,&TBCTL
+        bic.w   #TBSSEL0+MC1,&TBCTL
+        bis.w   #CM1+CM0+OUTMOD2+OUTMOD1,&TBCCTL4
+        bic.w   #OUTMOD0,&TBCCTL4
+        mov.w   #0FFFFh,&TBCCR0
+        mov.w   #10,&TBCCR4
+        call    #init_lcd
+        call    #writeImp
+        call    #wZm
+        
+        mov.b   #0,  R6
+        mov.b   #0,  R4 ; przechowywanie wartosci do wypisania
+        mov.b   #0,  R5 ; liczba dziesiatek
+        bis     #GIE,SR ; wlacz przerwania
+main_2:
+        JMP     $
+        
+adc_h:
+       ;mov     TBCCR4, R6
+       ;call     #ten_div
+       bic      #0, &ADC12IFG ;clear wektora
+       bic      #0, &ADC12CTL1 ;clear flagi
+        
+       mov      ADC12MEM0,R10
+
+       cmp      R6, R10
+       jl       sub_pwn
+       cmp      R6, R10
+       jeq      eq_pwn
+add_pwn:
+      cmp      TBCCR4, TBCCR0
+       jeq      eq_pwn
+       inc      TBCCR4
+       
+       ;add.w    #1000,TBCCR4
+       RETI
+sub_pwn:
+      cmp      #0,TBCCR4
+       jeq      eq_pwn
+       dec      TBCCR4
+       
+       ;sub.w    #1000,TBCCR4
+       RETI
+eq_pwn:
+      RETI
+       
+ENCO:   
+        ;;dane
+        bic.b   #002h,&P1IFG
+        bit.b   #004h,&P1IN
+        jz      EN_inc
+        jnz     EN_dec    
+EN_dec:
+        cmp      #0,R6
+        jeq     ENDI
+        sub.w   #1,R6
+        RETI
+
+EN_inc:
+        cmp      #0FFFh,R6
+        jeq      ENDI
+        add.w    #1,R6
+        RETI
+ ENDI:
+        RETI
+        
+ writeImp:
+        
+        bis.b   #RS, P2OUT ;wlaczamy input na wyswietlacz
+        call    #delay40ms
+        
+        mov.b   #'z', R12
+        call    #send4bit
+        mov.b   #'a', R12
+        call    #send4bit
+        mov.b   #'d', R12
+        call    #send4bit
+        mov.b   #':', R12
+        call    #send4bit
+        RET
+ wZm:
+        bic.b   #RS, P2OUT
+        call    #delay40ms
+        mov.b   #DDRAMSet+64, R12 ; ustawianie adresu kursora
+        call    #send4bit
+        bis.b   #RS, P2OUT ;wlaczamy input na wyswietlacz
+        call    #delay40ms
+        
+        mov.b   #'z', R12
+        call    #send4bit
+        mov.b   #'m', R12
+        call    #send4bit
+        mov.b   #':', R12
+        call    #send4bit
+        RET
+        
+TA_h:
+        BIC     #TAIFG, &TACTL
+        BIC     #CCIFG, &TACCTL0
+        mov.w   ADC12MEM0,R6
+
+call    #ten_div
+        RETI
+        
+        
+        
+ ten_div:
+        ;dzieli z R6, korzysta z R7, R8, R9
+        mov.b R6, R8
+        mov.b R6, R9
+        
+        rrc.b   R8
+        clrc
+        rrc.b   R8 ; R8 >> 2 // n >> 2
+        clrc
+        
+        rrc.b   R9 ; R9 >> 1 // n >> 1
+        clrc
+        
+        add.b   R8,R9 ; wynik w R9 // R9 = q
+        clrc
+        
+        mov.w   R9,R8
+        
+        rrc.b   R8
+        clrc
+        rrc.b   R8
+        clrc
+        rrc.b   R8
+        clrc
+        rrc.b   R8 ; R8 >> 4 // q >> 4
+        clrc
+        
+        add.b   R8,R9 ; q + (q >> 4)
+        clrc
+        
+        mov.b   R9,R8 
+        rrc.b   R8
+        clrc
+        rrc.b   R8
+        clrc
+        rrc.b   R8 ; R8 >> 3 // q >> 3
+        clrc
+        
+        mov.b   R8,R10 ; R10 = q >> 3 ( ostatnie q) 
+
+        mov.b   R8,R9 ; q = R8
+        rla.b   R9
+        clrc
+        rla.b   R9 ; q << 2  = R9
+        clrc
+
+        add.b   R9,R8
+        clrc
+        rla.b   R8 ; ((q<<2) + 1 ) << 1
+        clrc
+        
+        mov.b   R6,R7 ; R7 = n
+        sub.b   R8,R7 ; R7 = r = n - ((q<<2) + 1 ) << 1
+        clrc
+        mov.b   #0, R6 ; zerowanie R6
+        cmp.b   #9, R7
+        jeq     end_amp
+        cmp.b   #9, R7
+        jge     grtr_9
+        RET
+        ;jmp     get_amp       
+grtr_9:
+        inc.b R10
+        clrc
+        RET
+        
+get_amp:
+        cmp.b #10, R10
+        jl    end_amp
+dec_ten:        
+        sub.b #10, R10
+        inc.b R6
+        cmp.b #10, R10
+        jge   dec_ten
+end_amp:
+        bic.b   #RS, P2OUT
+        call    #delay40ms
+        mov.b   #DDRAMSet+72, R12 ; ustawianie adresu kursora
+        call    #send4bit
+        call    #delay40ms
+        
+        bis.b   #RS, P2OUT
+        call    #delay40ms
+        
+        add.b   #48, R6
+        add.b   #48, R10
+        
+        mov.b   R6, R12
+        call    #send4bit
+        mov.b   #'.', R12
+        call    #send4bit
+        mov.b   R10, R12
+        call    #send4bit
+        
+        sub.b   #48, R6
+        sub.b   #48, R10
+        RET
+        
+        
+init_lcd:
+        call #delay40ms
+        clr.b P2OUT
+        mov #3, R14
+rep3    bis.b #DB4+DB5+E, P2OUT
+        call #delay40ms
+        bic.b #E, P2OUT
+        call #delay40ms
+        dec R14
+        jnz rep3
+        mov.b #DB5+E, P2OUT
+        call #delay40ms
+        bic.b #E, P2OUT
+        call #delay40ms
+        ;;od teraz int 4bit
+;function set 4bti + nr line+font
+        mov.b #00101100b, R12
+        call #send4bit
+ ;display off     
+        mov.b #00001000b, R12
+        call #send4bit
+
+; display clear        
+        mov.b #E, P2OUT
+        call #delay40ms
+        bic.b #E, P2OUT
+        call #delay40ms
+        mov.b #DB4+E, P2OUT
+        call #delay40ms
+        bic.b #E, P2OUT
+        call #delay40ms
+ 
+   ;entry mode set    
+        mov.b #110b, R12
+        call #send4bit
+   ;display on+cursor on+blinking on     
+        mov.b #00001111b, R12
+        call #send4bit
+   ;set ddram adres           
+        mov.b #DDRAMSet, R12  ;ustawienie adresu 5
+        call #send4bit
+        
+        bis.b   #RS, P2OUT     ;wlaczamy input na wyswietlacz
+        call    #delay40ms
+        
+        
+        RET
+        
+send4bit:
+        ;procedra przesylajaca 8 bitowa dana w trybie 4 bitowym
+        ;wykorzystuje rejestry R12, R13 i R15
+        ;przesylana dana w rejestrze R12
+        mov.b R12, R13          ;przechowaj oryginal w R13
+        bis.b #E, P2OUT         ;ustawienie E dla zbocza opadajacego
+        mov.b P2OUT, R11        ;skopiowanie stanu P2 do R11
+        bic.b #00111100b, R11   ;wyzerowanie pozycji na ktorych beda dane
+        rrc.b R12               ;rotacje aby uzyskac starsze 4 bity
+        rrc.b R12
+        bic.b #11000011b, R12   ;pozostawienie starszych 4 bit reszta na zero
+        bis.b R12, R11          ;skopiowanie starszych 4 bitow do przygotowane R11
+        mov.b R11, P2OUT        ;odtworzenie stanu portu P2 z nowymi 4 bitami
+        bic.b #E, P2OUT         ;przeslanie danych do LCD
+        call #delay40us          ;opoznienie nota katalogowa
+        
+        mov.b R13, R12
+        bis.b #E, P2OUT
+        mov.b P2OUT, R11
+        bic.b #00111100b, R11
+        rlc.b R12
+        rlc.b R12
+        bic.b #11000011b, R12
+        bis.b R12, R11
+        mov.b R11, P2OUT
+        bic.b #E, P2OUT
+        call #delay40us
+        RET
+        
+delay40ms:
+        mov #10000, R15
+wait40ms:   
+        dec R15
+        jnz wait40ms
+        RET
+        
+delay40us:
+        mov #5, R15
+wait40us:   
+        dec R15
+        jnz wait40us
+        RET
+        
+        END

@@ -1,0 +1,79 @@
+#include "msp430.h"			; dolaczenie biblioteki do MSP430
+;------------------------------------------------------------------------------
+; Rotacja "1" na porcie P2, w lewo
+;------------------------------------------------------------------------------
+	ORG	01100h			; poczatkowy adres pamieci programu
+
+INIT:	mov.w	#0A00h,SP		; inicjalizacja wsk. stosu
+	mov.w	#WDTPW+WDTHOLD,&WDTCTL	; wylaczenie watchdoga
+        
+        bis.b   #0ffh, &P6SEL
+        bis.w   #MSC+ADC12ON+REFON+REF2_5V, &ADC12CTL0
+        bis.w   #SHP+CONSEQ_3, &ADC12CTL1
+        bis.b   #INCH_1+SREF0, &ADC12MCTL0
+        bis.w   #ENC+ADC12SC, &ADC12CTL0
+        
+        bis.b   #0ffh, &P2DIR
+        
+        bic.b   #0ffh, &P2OUT
+        
+        
+Main:
+
+        
+        mov.w   ADC12MEM0,R4
+        	
+        mov.w	#0FFFFh, R15		; inicjalizacja R15
+del:	dec.w	R15			; dekrementacja R15
+	jnz	del			; petla opozniajaca na R15
+        bic.b   #0ffh, &P2OUT
+        
+s_1:    sub.w   #1C7h,R4
+        bit     #N,SR
+        jnz     Main
+        bis.b   #00000001b,&P2OUT
+        
+s_2:    sub.w   #1C7h,R4
+        bit     #N,SR
+        jnz     Main
+        bis.b   #0000010b,&P2OUT
+s_3:
+        sub.w   #1C7h,R4
+        bit     #N,SR
+        jnz     Main
+        bis.b   #00000100b,&P2OUT
+s_4:
+        sub.w   #1C7h,R4
+        bit     #N,SR
+        jnz     Main
+        bis.b   #00001000b,&P2OUT
+s_5:
+        sub.w   #1C7h,R4
+        bit     #N,SR
+        jnz     Main
+        bis.b   #00010000b,&P2OUT
+s_6:
+        sub.w   #1C7h,R4
+        bit     #N,SR
+        jnz     Main
+        bis.b   #00100000b,&P2OUT
+s_7:
+        sub.w   #1C7h,R4
+        bit     #N,SR
+        jnz     Main
+        bis.b   #01000000b,&P2OUT
+s_8:
+        sub.w   #1C7h,R4
+        bit     #N,SR
+        jnz     Main
+        bis.b   #10000000b,&P2OUT
+        jmp     Main
+
+       
+;------------------------------------------------------------------------------
+;       Wektory przerwan
+;------------------------------------------------------------------------------
+	ORG	0FFFEh			; wektor resetu
+	DW	INIT			; adres poczatkowy pamieci programu
+
+	END
